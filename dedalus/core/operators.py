@@ -61,9 +61,8 @@ __all__ = ['GeneralFunction',
 # CUSTOM: operators
 __all__.extend([
            'Gradient_xi',
-           'CartesianGradient_xi',
            'Divergence_xi',
-           'CartesianDivergence_xi',
+           'Laplacian_xi',
            ])
 
 # Use simple decorators to track parseable operators
@@ -4543,7 +4542,7 @@ class CartesianGradient_xi(Gradient_xi):
                 out.data[i] = 0
 
 ############################################################################
-# GRADIENT
+# DIVERGENCE
 
 @alias("div_xi")
 class Divergence_xi(LinearOperator, metaclass=MultiClass):
@@ -4638,6 +4637,103 @@ class CartesianDivergence_xi(Divergence_xi):
         out.preset_layout(arg0.layout)
         np.copyto(out.data, arg0.data)
 
+############################################################################
+# LAPLACIAN
 
+@alias("lap_xi")
+class Laplacian_xi(LinearOperator, metaclass=MultiClass):
+
+    name = "Lap_xi"
+
+    @classmethod
+    def _preprocess_args(cls, operand, St, coordsys=None, out=None):
+        if isinstance(operand, Number):
+            raise SkipDispatchException(output=0)
+        if coordsys is None:
+            coordsys = operand.dist.single_coordsys
+            if coordsys is False:
+                raise ValueError("coordsys must be specified.")
+        elif isinstance(coordsys, coords.DirectProduct):
+            if not any([operand.domain.get_basis(cs) for cs in coordsys.coordsystems]):
+                raise SkipDispatchException(output=0)
+        elif isinstance(coordsys, coords.CartesianCoordinates):
+            if not any([operand.domain.get_basis(cs) for cs in coordsys.coords]):
+                raise SkipDispatchException(output=0)
+        elif operand.domain.get_basis(coordsys) is None:
+            raise SkipDispatchException(output=0)
+        return [operand, St, coordsys], {'out': out}
+
+    @classmethod
+    def _check_args(cls, operand, St, coordsys, out=None):
+        # Dispatch by coordinate system
+        if isinstance(operand, Operand):
+            if isinstance(coordsys, cls.cs_type):
+                return True
+        
+        # TODO: add St check
+        return False
+
+
+    def new_operand(self, operand, St, **kw):
+        return Laplacian_xi(operand, St, self.coordsys, **kw)
+
+
+class CartesianLaplacian_xi(Laplacian_xi):
+
+    cs_type = (coords.CartesianCoordinates, coords.Coordinate)
+
+    def __init__(self, operand, St, coordsys, out=None):
+        # Wrap to handle gradient wrt single coordinate
+        if isinstance(coordsys, coords.Coordinate):
+            coordsys = coords.CartesianCoordinates(coordsys.name)
+        parts = [Differentiate(Differentiate(operand, c), c) for c in coordsys.coords]
+
+        # CUSTOM:
+        # this modifies the vertical direction of the laplacian
+        # d^2/dx1^2 = d^2/dx1^2
+        # d^2/dx2^2 = d^2/dx2^2
+        # d^2/dx3^2 = d^2/dx3^2 - St * d^2/dx1dx3 - St * d^2/dx3dx1 + (St)^2 * d^2/dx1^2
+        parts[-1] -= St * Differentiate(Differentiate(operand, coordsys.coords[-1]), coordsys.coords[0])
+        parts[-1] -= St * Differentiate(Differentiate(operand, coordsys.coords[0]), coordsys.coords[-1])
+        parts[-1] += St * St * parts[0]
+        # END
+
+        arg = sum(parts)
+        LinearOperator.__init__(self, arg, out=out)
+        self.coordsys = coordsys
+        # LinearOperator requirements
+        self.operand = operand
+        # FutureField requirements
+        self.domain = arg.domain
+        self.tensorsig = arg.tensorsig
+        self.dtype = arg.dtype
+
+    def matrix_dependence(self, *vars):
+        return self.args[0].matrix_dependence(*vars)
+
+    def matrix_coupling(self, *vars):
+        return self.args[0].matrix_coupling(*vars)
+
+    def subproblem_matrix(self, subproblem):
+        """Build operator matrix for a specific subproblem."""
+        return self.args[0].expression_matrices(subproblem, [self.operand])[self.operand]
+
+    def check_conditions(self):
+        """Check that operands are in a proper layout."""
+        # Any layout (addition is done)
+        return True
+
+    def enforce_conditions(self):
+        """Require operands to be in a proper layout."""
+        # Any layout (addition is done)
+        pass
+
+    def operate(self, out):
+        """Perform operation."""
+        # OPTIMIZE: this has an extra copy
+        arg0 = self.args[0]
+        # Set output layout
+        out.preset_layout(arg0.layout)
+        np.copyto(out.data, arg0.data)
 ############################################################################
 ############################################################################
