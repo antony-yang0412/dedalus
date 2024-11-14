@@ -55,7 +55,10 @@ __all__ = ['GeneralFunction',
            'AdvectiveCFL',
            'SphericalEllProduct',
            'UnaryGridFunction',
-           'MulCosine']
+           'MulCosine',
+           'Gradient_xi', # CUSTOM:
+           'CartesianGradient_xi' # CUSTOM:
+           ]
 
 # Use simple decorators to track parseable operators
 aliases = {}
@@ -2382,6 +2385,145 @@ class CartesianGradient(Gradient):
                 out.data[i] = comp.data
             else:
                 out.data[i] = 0
+
+######################################
+######################################
+""" CUSTOM: OPERATOR """
+
+@alias("grad_xi")
+class Gradient_xi(LinearOperator, metaclass=MultiClass):
+
+    # This is a custom gradient term in the moving frame of reference
+    # in a shear-periodic simulation. The vertical (assumed to be last coord)
+    # has an extra term that accounts for the moving horizontal coordinate system.
+
+    # The derivative terms will be
+    # d/dx1 = d/dx1
+    # d/dx2 = d/dx2
+    # d/dx3 = d/dx3 - S * t * d/dx1
+
+    # where S is shear rate (du/dx3), t is time step.
+    # For now will not worry about efficiency, will just evaluate d/dx1 twice...
+    # This should dispatch and use the CartesianGradient_xi class.
+    # Implementation is in that class.
+
+    name = "Grad_xi"
+
+    @classmethod
+    def _preprocess_args(cls, operand, St, coordsys=None, out=None):
+        if isinstance(operand, Number):
+            raise SkipDispatchException(output=0)
+        if coordsys is None:
+            coordsys = operand.dist.single_coordsys
+            if coordsys is False:
+                raise ValueError("coordsys must be specified.")
+        return [operand, St, coordsys], {'out': out}
+
+    @classmethod
+    def _check_args(cls, operand, St, cs, out=None):
+        # print('checking args')
+        # Dispatch by coordinate system
+        if isinstance(operand, Operand):
+            if isinstance(cs, cls.cs_type):
+                # print('checking args success')
+                return True
+            print('checking args failed:coord')
+            print(cs)
+        # TODO: check St
+        print('checking arg failed')
+        return False
+
+    def new_operand(self, operand, St, **kw):
+        return Gradient_xi(operand, St, self.coordsys, **kw)
+
+
+class CartesianGradient_xi(Gradient_xi):
+    # this is the custom gradient operator class that computes extra term in last coordinate direction
+    # see Gradient_xi class for details
+
+    cs_type = (coords.CartesianCoordinates, coords.Coordinate)
+
+    def __init__(self, operand, St, coordsys, out=None):
+        # Wrap to handle gradient wrt single coordinate
+        if isinstance(coordsys, coords.Coordinate):
+            coordsys = coords.CartesianCoordinates(coordsys.name)
+        # Assemble partial derivatives along each coordinate
+        args = [Differentiate(operand, coord) for coord in coordsys.coords]
+
+        # CUSTOM: modify the vertical gradient (assumed to be last one) with a shear term
+        # and gradient in first axis given by the following (in 3 axis)
+        # d/dx1 = d/dx1
+        # d/dx2 = d/dx2
+        # d/dx3 = d/dx3 - S * t * d/dx1
+        args[-1] -= St * args[0]
+        # END
+
+        # TODO: get rid of this hack
+        for i in range(len(args)):
+            if args[i] == 0:
+                args[i] = 2*operand
+                args[i].args[0] = 0
+                original_args = list(args[i].original_args)
+                original_args[0] = 0
+                args[i].original_args = tuple(original_args)
+        bases = self._build_bases(*args)
+        args = [convert(arg, bases) for arg in args]
+        LinearOperator.__init__(self, *args, out=out)
+        self.coordsys = coordsys
+        # LinearOperator requirements
+        self.operand = operand
+        # FutureField requirements
+        self.domain = Domain(operand.dist, bases)
+        self.tensorsig = (coordsys,) + operand.tensorsig
+        self.dtype = operand.dtype
+
+    def _build_bases(self, *args):
+        return sum(args).domain.bases
+
+    def matrix_dependence(self, *vars):
+        arg_vals = [arg.matrix_dependence(self, *vars) for arg in self.args]
+        return np.logical_or.reduce(arg_vals)
+
+    def matrix_coupling(self, *vars):
+        arg_vals = [arg.matrix_coupling(self, *vars) for arg in self.args]
+        return np.logical_or.reduce(arg_vals)
+
+    def subproblem_matrix(self, subproblem):
+        """Build operator matrix for a specific subproblem."""
+        return sparse.vstack([arg.expression_matrices(subproblem, [self.operand])[self.operand] for arg in self.args])
+
+    def check_conditions(self):
+        """Check that operands are in a proper layout."""
+        # Require operands to be in same layout
+        layouts = [operand.layout for operand in self.args if operand]
+        all_layouts_equal = (len(set(layouts)) == 1)
+        return all_layouts_equal
+
+    def enforce_conditions(self):
+        """Require operands to be in a proper layout."""
+        # Require operands to be in same layout
+        # Take coeff layout arbitrarily
+        layout = self.dist.coeff_layout
+        for arg in self.args:
+            if arg:
+                arg.change_layout(layout)
+
+    def operate(self, out):
+        """Perform operation."""
+        operands = self.args
+        layouts = [operand.layout for operand in self.args if operand]
+        # Set output layout
+        out.preset_layout(layouts[0])
+        # Copy operand data to output components
+        for i, comp in enumerate(operands):
+            if comp:
+                out.data[i] = comp.data
+            else:
+                out.data[i] = 0
+
+######################################
+######################################
+
 
 
 class DirectProductGradient(Gradient):
