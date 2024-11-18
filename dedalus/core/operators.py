@@ -642,14 +642,29 @@ class LinearOperator(FutureField):
     #     return self.base(*args)
 
     def __repr__(self):
-        return '{}({})'.format(self.name, repr(self.operand))
+        # CUSTOM: handle the shear mesh operator to include St in reinitialization
+        if "_xi" in self.name:
+            return '{}({},{})'.format(self.name, repr(self.operand), self.St)
+        # END
+        else:
+            return '{}({})'.format(self.name, repr(self.operand))
 
     def __str__(self):
-        return '{}({})'.format(self.name, str(self.operand))
+        # CUSTOM: handle the shear mesh operator to include St in reinitialization
+        if "_xi" in self.name:
+            return '{}({},{})'.format(self.name, str(self.operand), self.St)
+        # END
+        else:
+            return '{}({})'.format(self.name, str(self.operand))
 
     def reinitialize(self, **kw):
         operand = self.operand.reinitialize(**kw)
-        return self.new_operand(operand)
+        # CUSTOM: handle the shear mesh operator to include St in reinitialization
+        if "_xi" in self.name:
+            return self.new_operand(operand, self.St)
+        # END
+        else:
+            return self.new_operand(operand)
 
     def new_operand(self, operand, **kw):
         # Subclasses must implement with correct arguments
@@ -663,7 +678,12 @@ class LinearOperator(FutureField):
                 if isinstance(self, var):
                     return (self, 0)
         # Distribute over split operand
-        return tuple(self.new_operand(arg) for arg in self.operand.split(*vars))
+        # CUSTOM: handle the shear mesh operator to include St in reinitialization
+        if "_xi" in self.name:
+            return tuple(self.new_operand(arg,self.St) for arg in self.operand.split(*vars))
+        # END
+        else:
+            return tuple(self.new_operand(arg) for arg in self.operand.split(*vars))
 
     def sym_diff(self, var):
         """Symbolically differentiate with respect to specified operand."""
@@ -4476,6 +4496,7 @@ class CartesianGradient_xi(Gradient_xi):
         # d/dx2 = d/dx2
         # d/dx3 = d/dx3 - S * t * d/dx1
         args[-1] -= St * args[0]
+        self.St = St
         # END
 
         # TODO: get rid of this hack
@@ -4596,6 +4617,7 @@ class CartesianDivergence_xi(Divergence_xi):
         # d/dx2 = d/dx2
         # d/dx3 = d/dx3 - S * t * d/dx1
         comps[-1] -= St * comps[0]
+        self.St = St
         # END
 
         arg = sum(comps)
@@ -4696,6 +4718,7 @@ class CartesianLaplacian_xi(Laplacian_xi):
         parts[-1] -= St * Differentiate(Differentiate(operand, coordsys.coords[-1]), coordsys.coords[0])
         parts[-1] -= St * Differentiate(Differentiate(operand, coordsys.coords[0]), coordsys.coords[-1])
         parts[-1] += St * St * parts[0]
+        self.St = St
         # END
 
         arg = sum(parts)

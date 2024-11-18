@@ -325,6 +325,13 @@ class InitialValueProblem(ProblemBase):
         # Extract matrix expressions
         M, L = eqn['LHS'].split(operators.TimeDerivative)
         F = eqn['RHS']
+
+        # DEBUG:
+        print("equation")
+        print("L:", L)
+        print("M: ", M)
+        print("F: ", F)
+
         # Drop time derivatives
         if M:
             M = M.replace(operators.TimeDerivative, lambda x: x)
