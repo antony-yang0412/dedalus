@@ -396,6 +396,14 @@ class IntervalBasis(Basis):
         local_elements = dist.coeff_layout.local_elements(self.domain(dist), scales=1)
         return reshape_vector(local_elements[dist.get_basis_axis(self)], dim=dist.dim, axis=dist.get_basis_axis(self))
 
+    # CUSTOM:
+    def local_wavenumbers(self, dist):
+        """Local wavenumber"""
+        local_elements = dist.coeff_layout.local_elements(self.domain(dist), scales=1)
+        local_elements = local_elements[dist.get_basis_axis(self)]
+        local_wave_num = self.wavenumbers[local_elements]
+        return reshape_vector(local_wave_num, dim=dist.dim, axis=dist.get_basis_axis(self))
+
     def _native_grid(self, scale):
         """Native flat global grid."""
         # Subclasses must implement

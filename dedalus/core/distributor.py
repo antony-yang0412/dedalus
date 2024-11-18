@@ -300,6 +300,11 @@ class Distributor:
         # TODO: remove from bases and do it all here?
         return basis.local_modes(self)
 
+    # CUSTOM:
+    def local_wavenumbers(self, basis):
+        # TODO: remove from bases and do it all here?
+        return basis.local_wavenumbers(self)
+
     @CachedAttribute
     def default_nonconst_groups(self):
         return sum((cs.default_nonconst_groups for cs in self.coordsystems), ())

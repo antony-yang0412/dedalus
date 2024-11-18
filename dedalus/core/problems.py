@@ -327,10 +327,10 @@ class InitialValueProblem(ProblemBase):
         F = eqn['RHS']
 
         # DEBUG:
-        print("equation")
-        print("L:", L)
-        print("M: ", M)
-        print("F: ", F)
+        # print("equation")
+        # print("L:", L)
+        # print("M: ", M)
+        # print("F: ", F)
 
         # Drop time derivatives
         if M:
