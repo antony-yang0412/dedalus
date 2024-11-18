@@ -367,13 +367,20 @@ class IntervalBasis(Basis):
         problem_grid = self.COV.problem_coord(native_grid)
         return reshape_vector(problem_grid, dim=dist.dim, axis=dist.get_basis_axis(self))
 
-    def local_grids(self, dist, scales):
+    # CUSTOM:
+    def local_grids(self, dist, layout, scales):
         """Local grids."""
-        return (self.local_grid(dist, scales[0]),)
+        return (self.local_grid(dist, layout, scales[0]),)
 
-    def local_grid(self, dist, scale):
+    def local_grid(self, dist, layout, scale):
         """Local grid."""
-        local_elements = dist.grid_layout.local_elements(self.domain(dist), scales=scale)
+        # CUSTOM:
+        if layout is None:
+            local_elements = dist.grid_layout.local_elements(self.domain(dist), scales=scale)
+        else:
+            # meant for mixed grid layout
+            local_elements = layout.local_elements(self.domain(dist), scales=scale)
+        # END
         native_grid = self._native_grid(scale)[local_elements[dist.get_basis_axis(self)]]
         problem_grid = self.COV.problem_coord(native_grid)
         return reshape_vector(problem_grid, dim=dist.dim, axis=dist.get_basis_axis(self))
@@ -397,12 +404,33 @@ class IntervalBasis(Basis):
         return reshape_vector(local_elements[dist.get_basis_axis(self)], dim=dist.dim, axis=dist.get_basis_axis(self))
 
     # CUSTOM:
-    def local_wavenumbers(self, dist):
+    def local_wavenumbers(self, dist, layout):
         """Local wavenumber"""
-        local_elements = dist.coeff_layout.local_elements(self.domain(dist), scales=1)
+        # CUSTOM:
+        if layout is None:
+            local_elements = dist.coeff_layout.local_elements(self.domain(dist), scales=1)
+        else:
+            # meant for mixed grid layout
+            local_elements = layout.local_elements(self.domain(dist), scales=1)
+        # END
         local_elements = local_elements[dist.get_basis_axis(self)]
         local_wave_num = self.wavenumbers[local_elements]
         return reshape_vector(local_wave_num, dim=dist.dim, axis=dist.get_basis_axis(self))
+
+    def local_native_wavenumbers(self, dist, layout):
+        """Local native wavenumber"""
+        # CUSTOM:
+        if layout is None:
+            local_elements = dist.coeff_layout.local_elements(self.domain(dist), scales=1)
+        else:
+            # meant for mixed grid layout
+            local_elements = layout.local_elements(self.domain(dist), scales=1)
+        # END
+        local_elements = local_elements[dist.get_basis_axis(self)]
+        local_native_wave_num = self.native_wavenumbers[local_elements]
+        return reshape_vector(local_native_wave_num, dim=dist.dim, axis=dist.get_basis_axis(self))
+    
+    # END
 
     def _native_grid(self, scale):
         """Native flat global grid."""

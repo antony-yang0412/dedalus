@@ -251,12 +251,12 @@ class Distributor:
             raise ValueError("Unsupported coordinate systems.")
         return I
 
-    def local_grid(self, basis, scale=None):
+    def local_grid(self, basis, layout=None, scale=None):
         # TODO: remove from bases and do it all here?
         if scale is None:
             scale = 1
         if basis.dim == 1:
-            return basis.local_grid(self, scale=scale)
+            return basis.local_grid(self, layout=layout, scale=scale)
         else:
             raise ValueError("Use `local_grids` for multidimensional bases.")
 
@@ -288,12 +288,12 @@ class Distributor:
     #             grids.append(reshape_vector(local_grid, dim=self.dim, axis=axis))
     #     return tuple(grids)
 
-    def local_grids(self, *bases, scales=None):
+    def local_grids(self, *bases, layout=None, scales=None):
         scales = self.remedy_scales(scales)
         grids = []
         for basis in bases:
             basis_scales = scales[self.first_axis(basis):self.last_axis(basis)+1]
-            grids.extend(basis.local_grids(self, scales=basis_scales))
+            grids.extend(basis.local_grids(self, layout=layout, scales=basis_scales))
         return grids
 
     def local_modes(self, basis):
@@ -301,9 +301,14 @@ class Distributor:
         return basis.local_modes(self)
 
     # CUSTOM:
-    def local_wavenumbers(self, basis):
+    def local_wavenumbers(self, basis, layout=None):
         # TODO: remove from bases and do it all here?
-        return basis.local_wavenumbers(self)
+        return basis.local_wavenumbers(self, layout=layout)
+
+    def local_native_wavenumbers(self, basis, layout=None):
+        # TODO: remove from bases and do it all here?
+        return basis.local_native_wavenumbers(self, layout=layout)
+    # END
 
     @CachedAttribute
     def default_nonconst_groups(self):
